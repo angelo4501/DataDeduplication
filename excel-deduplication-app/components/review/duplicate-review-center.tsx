@@ -8,7 +8,7 @@ import { mergeRecords } from "@/services/dedupe-engine/merge";
 import { useDedupeStore } from "@/store/use-dedupe-store";
 import type { DuplicateClassification, DuplicateGroup } from "@/types";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -113,11 +113,9 @@ export function DuplicateReviewCenter() {
               Approve all
             </Button>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Download className="mr-2 size-4" />
-                  Export
-                </Button>
+              <DropdownMenuTrigger className={buttonVariants({ variant: "outline" })}>
+                <Download className="mr-2 size-4" />
+                Export
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={handleExportXlsx}>Cleaned workbook</DropdownMenuItem>

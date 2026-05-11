@@ -1,9 +1,12 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { DatabaseZap, FileUp, Gauge, Settings, ShieldCheck } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-const navItems = [
+const navItems: Array<{ href: Route; label: string; icon: LucideIcon }> = [
   { href: "/", label: "Dashboard", icon: Gauge },
   { href: "/upload", label: "Upload", icon: FileUp },
   { href: "/review", label: "Review", icon: ShieldCheck },
@@ -27,12 +30,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         <nav className="mt-10 grid gap-2">
           {navItems.map((item) => (
-            <Button key={item.href} variant="ghost" className="justify-start gap-3" asChild>
-              <Link href={item.href}>
-                <item.icon className="size-4" />
-                {item.label}
-              </Link>
-            </Button>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(buttonVariants({ variant: "ghost" }), "justify-start gap-3")}
+            >
+              <item.icon className="size-4" />
+              {item.label}
+            </Link>
           ))}
         </nav>
       </aside>
@@ -52,9 +57,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 employee, voter, and customer lists without sending files to a server.
               </p>
             </div>
-            <Button asChild>
-              <Link href="/upload">Upload dataset</Link>
-            </Button>
+            <Link href="/upload" className={buttonVariants()}>
+              Upload dataset
+            </Link>
           </header>
           {children}
         </div>

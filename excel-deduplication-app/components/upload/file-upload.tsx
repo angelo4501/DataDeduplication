@@ -180,7 +180,11 @@ export function FileUpload() {
                     <div className="mt-4 grid gap-3 sm:grid-cols-[240px_1fr]">
                       <Select
                         value={file.selectedSheetId ?? file.sheets[0]?.id}
-                        onValueChange={(sheetId) => selectSheet(file.id, sheetId)}
+                        onValueChange={(sheetId) => {
+                          if (sheetId) {
+                            selectSheet(file.id, sheetId);
+                          }
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select worksheet" />

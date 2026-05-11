@@ -21,7 +21,10 @@ export type DedupeWorkerResponse =
       error: string;
     };
 
-const workerScope = self as DedicatedWorkerGlobalScope;
+const workerScope = self as unknown as {
+  onmessage: ((event: MessageEvent<DedupeWorkerRequest>) => void | Promise<void>) | null;
+  postMessage: (message: DedupeWorkerResponse) => void;
+};
 
 workerScope.onmessage = async (event: MessageEvent<DedupeWorkerRequest>) => {
   if (event.data.type !== "find-duplicates") {

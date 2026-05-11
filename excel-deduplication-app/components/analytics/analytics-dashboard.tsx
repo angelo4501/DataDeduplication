@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { useDedupeStore } from "@/store/use-dedupe-store";
 const COLORS = ["#18181b", "#71717a", "#a1a1aa", "#d4d4d8"];
 
 export function AnalyticsDashboard() {
+  const [mounted, setMounted] = useState(false);
   const { analytics, duplicateGroups } = useDedupeStore();
   const distribution = [
     { name: "Exact", value: analytics?.exactGroups ?? 0 },
@@ -24,6 +26,10 @@ export function AnalyticsDashboard() {
     confidence: group.confidence,
   }));
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="grid gap-6">
       <div className="grid gap-6 lg:grid-cols-2">
@@ -33,16 +39,22 @@ export function AnalyticsDashboard() {
             <CardDescription>Duplicate groups by threshold band.</CardDescription>
           </CardHeader>
           <CardContent className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={distribution} dataKey="value" nameKey="name" outerRadius={110} label>
-                  {distribution.map((entry, index) => (
-                    <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            {mounted ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={320} minHeight={300}>
+                <PieChart>
+                  <Pie data={distribution} dataKey="value" nameKey="name" outerRadius={110} label>
+                    {distribution.map((entry, index) => (
+                      <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading chart...
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -52,15 +64,21 @@ export function AnalyticsDashboard() {
             <CardDescription>Exact, high-probability, and possible duplicate clusters.</CardDescription>
           </CardHeader>
           <CardContent className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={confidenceBands}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="groups" fill="#18181b" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {mounted ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={320} minHeight={300}>
+                <BarChart data={confidenceBands}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="groups" fill="#18181b" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading chart...
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -71,15 +89,21 @@ export function AnalyticsDashboard() {
           <CardDescription>First 20 sorted groups from the matching output.</CardDescription>
         </CardHeader>
         <CardContent className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={trend}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis domain={[0, 100]} />
-              <Tooltip />
-              <Bar dataKey="confidence" fill="#52525b" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {mounted ? (
+            <ResponsiveContainer width="100%" height="100%" minWidth={320} minHeight={300}>
+              <BarChart data={trend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis domain={[0, 100]} />
+                <Tooltip />
+                <Bar dataKey="confidence" fill="#52525b" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading chart...
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

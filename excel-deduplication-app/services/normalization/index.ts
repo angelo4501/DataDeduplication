@@ -33,6 +33,7 @@ export function normalizeString(value: CellValue | undefined): string {
 export function normalizeName(value: CellValue | undefined): string {
   return normalizeString(value)
     .replace(/\b(jr|sr|ii|iii|iv|md|phd)\b/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

@@ -50,7 +50,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                 Production-ready data quality
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-                DRMD deduplication workspace
+                DRMD-payout File deduplication workspace
               </h1>
               <p className="mt-2 max-w-3xl text-muted-foreground">
                 Parse, normalize, fuzzy-match, cluster, review, merge, and export large CRM,

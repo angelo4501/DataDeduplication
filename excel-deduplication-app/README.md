@@ -1,4 +1,4 @@
-# Deduplicate AI - Excel Data Deduplication App
+# DRMD - Excel Data Deduplication App
 
 Production-ready SaaS-style web application for detecting, reviewing, merging, and exporting duplicate records from Excel and CSV files.
 

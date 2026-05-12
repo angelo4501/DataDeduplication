@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Deduplicate AI | Excel Data Deduplication",
+  title: "DRMD | Excel Data Deduplication",
   description:
     "Production-ready Excel and CSV duplicate detection with fuzzy matching, weighted scoring, clustering, review, merge, and export workflows.",
 };

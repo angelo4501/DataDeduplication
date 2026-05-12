@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { calculateWeightedScore, findDuplicates } from "@/services/dedupe-engine";
-import type { ParsedRow } from "@/types";
+import { mergeRecords, removeMergedDuplicates } from "@/services/dedupe-engine/merge";
+import type { DuplicateGroup, ParsedRow } from "@/types";
 
 function row(id: string, values: ParsedRow["values"]): ParsedRow {
   return {
@@ -61,5 +62,38 @@ describe("dedupe engine", () => {
     expect(result.groups).toHaveLength(1);
     expect(result.groups[0].recordIds).toEqual(expect.arrayContaining(["row-1", "row-2"]));
     expect(result.groups[0].recordIds).not.toContain("row-3");
+  });
+
+  it("merges only selected records from larger duplicate groups", () => {
+    const records = [
+      row("row-1", {
+        "First Name": "Maria",
+        Address: "1 Short St",
+      }),
+      row("row-2", {
+        "First Name": "Pedro",
+        Address: "2 Different St",
+      }),
+      row("row-3", {
+        "First Name": "Maria",
+        Address: "100 Longer Example Street",
+      }),
+    ];
+    const group: DuplicateGroup = {
+      id: "group-1",
+      recordIds: records.map((record) => record.id),
+      records,
+      confidence: 95,
+      classification: "exact",
+      reasons: [],
+      status: "pending",
+    };
+
+    const { record, audit } = mergeRecords(group, {}, "manual", ["row-1", "row-3"]);
+    const cleanedRows = removeMergedDuplicates(records, group, record, audit.selectedRecordIds);
+
+    expect(audit.selectedRecordIds).toEqual(["row-1", "row-3"]);
+    expect(record.values.Address).toBe("100 Longer Example Street");
+    expect(cleanedRows.map((cleanedRow) => cleanedRow.id)).toEqual(["merged-group-1", "row-2"]);
   });
 });

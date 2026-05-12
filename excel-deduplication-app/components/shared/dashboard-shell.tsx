@@ -23,7 +23,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <DatabaseZap className="size-6" />
           </div>
           <div>
-            <p className="text-lg font-semibold">Deduplicate AI</p>
+            <p className="text-lg font-semibold">DRMD</p>
             <p className="text-xs text-muted-foreground">Excel & CSV entity resolution</p>
           </div>
         </Link>

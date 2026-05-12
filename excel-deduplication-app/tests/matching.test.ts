@@ -13,6 +13,11 @@ describe("matching", () => {
     expect(calculateSimilarity("Acme Printing", "Acme Printng").score).toBeGreaterThanOrEqual(90);
   });
 
+  it("matches uppercase and lowercase enye without flattening it to n", () => {
+    expect(calculateNameSimilarity("PEÑA", "peña").score).toBe(100);
+    expect(calculateNameSimilarity("PENA", "PEÑA").score).toBeLessThan(100);
+  });
+
   it("detects nickname and swapped name similarity", () => {
     expect(calculateNameSimilarity("Mike", "Michael").score).toBeGreaterThanOrEqual(90);
     expect(calculateNameSimilarity("Juan Carlos", "Carlos Juan").score).toBeGreaterThanOrEqual(90);

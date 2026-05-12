@@ -12,6 +12,7 @@ const COMMON_ADDRESS_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bapartment\b/g, "apt"],
   [/\bunit\b/g, "unit"],
 ];
+const ENYE_PLACEHOLDER = "DRMD_ENYE_PLACEHOLDER";
 
 export function normalizeString(value: CellValue | undefined): string {
   if (value === null || value === undefined) {
@@ -21,9 +22,11 @@ export function normalizeString(value: CellValue | undefined): string {
   const raw = value instanceof Date ? value.toISOString() : String(value);
 
   return raw
+    .replace(/[Ññ]/g, ENYE_PLACEHOLDER)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replaceAll(ENYE_PLACEHOLDER.toLowerCase(), "ñ")
     .replace(/['’`]/g, "")
     .replace(/[^\p{L}\p{N}\s@.+-]/gu, " ")
     .replace(/\s+/g, " ")

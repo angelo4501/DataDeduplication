@@ -4,6 +4,8 @@ import * as XLSX from "xlsx";
 import type { DuplicateGroup, ExportPayload, ParsedRow } from "@/types";
 import { escapeCsvFormula } from "@/utils/security";
 
+const UTF8_BOM = "\uFEFF";
+
 function rowsToPlainObjects(rows: ParsedRow[]): Record<string, string>[] {
   return rows.map((row) =>
     Object.fromEntries(
@@ -29,21 +31,21 @@ function duplicateReport(groups: DuplicateGroup[]): Record<string, string | numb
 }
 
 export function buildCleanCsv(rows: ParsedRow[]): string {
-  return Papa.unparse(rowsToPlainObjects(rows), {
+  return `${UTF8_BOM}${Papa.unparse(rowsToPlainObjects(rows), {
     quotes: false,
     newline: "\n",
-  });
+  })}`;
 }
 
 export function buildDuplicateReportCsv(groups: DuplicateGroup[]): string {
-  return Papa.unparse(duplicateReport(groups), {
+  return `${UTF8_BOM}${Papa.unparse(duplicateReport(groups), {
     quotes: false,
     newline: "\n",
-  });
+  })}`;
 }
 
 export function buildAuditTrailCsv(payload: ExportPayload): string {
-  return Papa.unparse(
+  return `${UTF8_BOM}${Papa.unparse(
     payload.auditTrail.map((entry) => ({
       id: entry.id,
       groupId: entry.groupId,
@@ -53,7 +55,7 @@ export function buildAuditTrailCsv(payload: ExportPayload): string {
       mergedValues: JSON.stringify(entry.mergedValues),
       notes: entry.notes ?? "",
     })),
-  );
+  )}`;
 }
 
 export function buildCleanWorkbook(payload: ExportPayload): XLSX.WorkBook {

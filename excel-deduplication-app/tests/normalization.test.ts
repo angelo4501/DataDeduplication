@@ -14,6 +14,11 @@ describe("normalization", () => {
     expect(normalizeName("MARIA O'Connor Jr.")).toBe("maria oconnor");
   });
 
+  it("preserves enye while normalizing case and other accents", () => {
+    expect(normalizeString("  PEÑA, José ÑORA  ")).toBe("peña jose ñora");
+    expect(normalizeName("NiÑO Jr.")).toBe("niño");
+  });
+
   it("normalizes equivalent Philippine mobile formats identically", () => {
     const expected = "9171234567";
 

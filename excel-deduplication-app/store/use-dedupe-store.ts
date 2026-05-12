@@ -30,7 +30,7 @@ interface DedupeStore {
   selectSheet: (fileId: string, sheetId: string) => void;
   setDedupeResult: (result: DedupeResult) => void;
   setProgress: (progress: ProcessingProgress) => void;
-  mergeGroup: (groupId: string, overrides?: Record<string, string>) => void;
+  mergeGroup: (groupId: string, overrides?: Record<string, string>, selectedRecordIds?: string[]) => void;
   ignoreGroup: (groupId: string) => void;
   markUnique: (groupId: string) => void;
   approveAll: () => void;
@@ -99,14 +99,20 @@ export const useDedupeStore = create<DedupeStore>((set, get) => ({
       },
     }),
   setProgress: (progress) => set({ progress }),
-  mergeGroup: (groupId, overrides = {}) =>
+  mergeGroup: (groupId, overrides = {}, selectedRecordIds) =>
     set((state) => {
       const group = state.duplicateGroups.find((candidate) => candidate.id === groupId);
       if (!group) {
         return state;
       }
 
-      const { record, audit } = mergeRecords(group, overrides);
+      const validSelectedRecordIds = selectedRecordIds?.filter((recordId) => group.recordIds.includes(recordId));
+      if (validSelectedRecordIds && validSelectedRecordIds.length < 2) {
+        return state;
+      }
+
+      const strategy = Object.keys(overrides).length > 0 || validSelectedRecordIds ? "manual" : "auto";
+      const { record, audit } = mergeRecords(group, overrides, strategy, validSelectedRecordIds ?? group.recordIds);
       const duplicateGroups = state.duplicateGroups.map((candidate) =>
         candidate.id === groupId
           ? {
@@ -119,7 +125,7 @@ export const useDedupeStore = create<DedupeStore>((set, get) => ({
 
       return {
         duplicateGroups,
-        cleanedRows: removeMergedDuplicates(state.cleanedRows, group, record),
+        cleanedRows: removeMergedDuplicates(state.cleanedRows, group, record, validSelectedRecordIds ?? group.recordIds),
         auditTrail: [...state.auditTrail, audit],
       };
     }),

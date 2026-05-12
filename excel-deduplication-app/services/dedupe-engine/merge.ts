@@ -27,12 +27,19 @@ export function mergeRecords(
   group: DuplicateGroup,
   overrides: RowValues = {},
   strategy: "auto" | "manual" = Object.keys(overrides).length > 0 ? "manual" : "auto",
+  selectedRecordIds: string[] = group.recordIds,
 ): { record: ParsedRow; audit: MergeAuditEntry } {
-  const allKeys = new Set(group.records.flatMap((record) => Object.keys(record.values)));
+  const selectedRecordIdSet = new Set(selectedRecordIds);
+  const selectedRecords = group.records.filter((record) => selectedRecordIdSet.has(record.id));
+  if (selectedRecords.length < 2) {
+    throw new Error("Select at least two records to merge.");
+  }
+
+  const allKeys = new Set(selectedRecords.flatMap((record) => Object.keys(record.values)));
   const mergedValues: RowValues = {};
 
   for (const key of allKeys) {
-    const best = group.records
+    const best = selectedRecords
       .map((record) => record.values[key])
       .filter((value) => normalizeString(String(value ?? "")))
       .sort((left, right) => valueScore(key, right) - valueScore(key, left))[0];
@@ -43,7 +50,7 @@ export function mergeRecords(
   Object.assign(mergedValues, overrides);
 
   const record: ParsedRow = {
-    ...group.records[0],
+    ...selectedRecords[0],
     id: `merged-${group.id}`,
     values: mergedValues,
   };
@@ -55,13 +62,18 @@ export function mergeRecords(
       groupId: group.id,
       timestamp: new Date().toISOString(),
       strategy,
-      selectedRecordIds: group.recordIds,
+      selectedRecordIds: selectedRecords.map((selectedRecord) => selectedRecord.id),
       mergedValues,
     },
   };
 }
 
-export function removeMergedDuplicates(rows: ParsedRow[], group: DuplicateGroup, mergedRecord: ParsedRow): ParsedRow[] {
-  const duplicateIds = new Set(group.recordIds);
+export function removeMergedDuplicates(
+  rows: ParsedRow[],
+  group: DuplicateGroup,
+  mergedRecord: ParsedRow,
+  selectedRecordIds: string[] = group.recordIds,
+): ParsedRow[] {
+  const duplicateIds = new Set(selectedRecordIds);
   return [mergedRecord, ...rows.filter((row) => !duplicateIds.has(row.id))];
 }

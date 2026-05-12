@@ -49,9 +49,33 @@ export function DuplicateReviewCenter() {
   const pendingGroups = duplicateGroups.filter((group) => group.status === "pending");
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(pendingGroups[0]?.id);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [selectedRecordIdsByGroup, setSelectedRecordIdsByGroup] = useState<Record<string, string[]>>({});
   const selectedGroup =
     duplicateGroups.find((group) => group.id === selectedGroupId) ?? pendingGroups[0] ?? duplicateGroups[0];
-  const mergePreview = selectedGroup ? mergeRecords(selectedGroup).record : undefined;
+  const selectedRecordIds = useMemo(() => {
+    if (!selectedGroup) {
+      return [];
+    }
+
+    const groupRecordIds = new Set(selectedGroup.recordIds);
+    const savedSelection = selectedRecordIdsByGroup[selectedGroup.id];
+    return savedSelection
+      ? savedSelection.filter((recordId) => groupRecordIds.has(recordId))
+      : selectedGroup.recordIds;
+  }, [selectedGroup, selectedRecordIdsByGroup]);
+  const selectedRecords = useMemo(() => {
+    if (!selectedGroup) {
+      return [];
+    }
+
+    const selectedRecordIdSet = new Set(selectedRecordIds);
+    return selectedGroup.records.filter((record) => selectedRecordIdSet.has(record.id));
+  }, [selectedGroup, selectedRecordIds]);
+  const canMergeSelection = !selectedGroup || selectedGroup.records.length <= 2 || selectedRecordIds.length >= 2;
+  const mergePreview =
+    selectedGroup && canMergeSelection
+      ? mergeRecords({ ...selectedGroup, recordIds: selectedRecordIds, records: selectedRecords }).record
+      : undefined;
 
   const comparisonKeys = useMemo(() => {
     if (!selectedGroup) {
@@ -84,6 +108,36 @@ export function DuplicateReviewCenter() {
           : buildAuditTrailCsv(payload);
 
     downloadBlob(csv, `${type}-export.csv`, "text/csv;charset=utf-8");
+  }
+
+  function toggleRecordSelection(recordId: string) {
+    if (!selectedGroup || selectedGroup.records.length <= 2) {
+      return;
+    }
+
+    const hasSavedSelection = selectedRecordIdsByGroup[selectedGroup.id] !== undefined;
+    const currentSelection = hasSavedSelection ? selectedRecordIds : selectedGroup.recordIds;
+    const nextSelection = currentSelection.includes(recordId)
+      ? currentSelection.filter((selectedRecordId) => selectedRecordId !== recordId)
+      : [...currentSelection, recordId];
+
+    setSelectedRecordIdsByGroup((currentSelections) => ({
+      ...currentSelections,
+      [selectedGroup.id]: nextSelection,
+    }));
+  }
+
+  function handleMergeSelectedGroup() {
+    if (!selectedGroup || !canMergeSelection) {
+      return;
+    }
+
+    mergeGroup(
+      selectedGroup.id,
+      {},
+      selectedGroup.records.length > 2 ? selectedRecordIds : undefined,
+    );
+    setPreviewOpen(false);
   }
 
   if (duplicateGroups.length === 0) {
@@ -165,10 +219,10 @@ export function DuplicateReviewCenter() {
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setPreviewOpen(true)} variant="outline">
+              <Button onClick={() => setPreviewOpen(true)} variant="outline" disabled={!canMergeSelection}>
                 Preview merge
               </Button>
-              <Button onClick={() => mergeGroup(selectedGroup.id)}>
+              <Button onClick={handleMergeSelectedGroup} disabled={!canMergeSelection}>
                 <GitMerge className="mr-2 size-4" />
                 Merge
               </Button>
@@ -182,6 +236,50 @@ export function DuplicateReviewCenter() {
             </div>
           </CardHeader>
           <CardContent>
+            {selectedGroup.records.length > 2 && (
+              <div className="mb-4 rounded-2xl border bg-muted/30 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">Choose records to merge</p>
+                    <p className="text-sm text-muted-foreground">
+                      This group has more than two possible duplicates. Select at least two records;
+                      unselected records remain in the cleaned data.
+                    </p>
+                  </div>
+                  <Badge variant={canMergeSelection ? "secondary" : "destructive"}>
+                    {selectedRecordIds.length} selected
+                  </Badge>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {selectedGroup.records.map((record) => {
+                    const checked = selectedRecordIds.includes(record.id);
+
+                    return (
+                      <button
+                        key={record.id}
+                        type="button"
+                        onClick={() => toggleRecordSelection(record.id)}
+                        className="rounded-xl border bg-background p-3 text-left transition hover:bg-muted/70 data-[selected=true]:border-primary data-[selected=true]:bg-primary/5"
+                        data-selected={checked}
+                      >
+                        <span className="flex items-center gap-2 font-medium">
+                          <span
+                            className="flex size-4 items-center justify-center rounded border border-primary text-[10px] text-primary"
+                            aria-hidden="true"
+                          >
+                            {checked && <Check className="size-3" />}
+                          </span>
+                          Row {record.rowNumber}
+                        </span>
+                        <span className="mt-1 block truncate text-sm text-muted-foreground">
+                          {Object.values(record.values).filter(Boolean).slice(0, 2).join(" ") || record.id}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <Tabs defaultValue="comparison">
               <TabsList>
                 <TabsTrigger value="comparison">Comparison</TabsTrigger>
@@ -247,7 +345,8 @@ export function DuplicateReviewCenter() {
           <DialogHeader>
             <DialogTitle>Merge preview</DialogTitle>
             <DialogDescription>
-              The engine prefers valid phones, non-empty fields, longest addresses, and latest updated values.
+              The engine previews values from the selected records and prefers valid phones, non-empty fields,
+              longest addresses, and latest updated values.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[520px] overflow-auto rounded-xl border">

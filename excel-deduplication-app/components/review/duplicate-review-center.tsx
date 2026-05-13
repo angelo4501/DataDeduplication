@@ -6,7 +6,7 @@ import { Check, Download, EyeOff, GitMerge, ShieldAlert } from "lucide-react";
 import { buildAuditTrailCsv, buildCleanCsv, buildDuplicateReportCsv, downloadBlob, downloadWorkbook } from "@/services/export";
 import { mergeRecords } from "@/services/dedupe-engine/merge";
 import { useDedupeStore } from "@/store/use-dedupe-store";
-import type { DuplicateClassification, DuplicateGroup, ParsedRow } from "@/types";
+import type { DuplicateClassification, DuplicateGroup } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,32 +23,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type QueueSort = "default" | "az" | "za";
-
-type NameFieldKey = "firstName" | "middleName" | "lastName";
-
-type NameFieldDefinition = {
-  key: NameFieldKey;
-  label: string;
-  aliases: string[];
-};
-
-const NAME_FIELD_DEFINITIONS: NameFieldDefinition[] = [
-  {
-    key: "firstName",
-    label: "First",
-    aliases: ["firstName", "first name", "firstname", "given name"],
-  },
-  {
-    key: "middleName",
-    label: "Middle",
-    aliases: ["middleName", "middle name", "middlename", "middle initial", "mi"],
-  },
-  {
-    key: "lastName",
-    label: "Last",
-    aliases: ["lastName", "last name", "lastname", "surname", "family name"],
-  },
-];
 
 function confidenceVariant(classification: DuplicateClassification) {
   if (classification === "exact") {
@@ -68,46 +42,6 @@ function groupLabel(group: DuplicateGroup): string {
 
 function normalizeLookupValue(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
-}
-
-function normalizeHeader(header: string): string {
-  return normalizeLookupValue(header).replace(/[\s_-]/g, "");
-}
-
-function getNameFieldValue(record: ParsedRow, definition: NameFieldDefinition): string {
-  const valuesByHeader = new Map(
-    Object.entries(record.values).map(([header, value]) => [normalizeHeader(header), value]),
-  );
-
-  for (const alias of [definition.key, definition.label, ...definition.aliases]) {
-    const value = valuesByHeader.get(normalizeHeader(alias));
-    if (value !== undefined && value !== null && String(value).trim()) {
-      return String(value).trim();
-    }
-  }
-
-  return "";
-}
-
-function buildNameDuplicateCounts(group: DuplicateGroup | undefined): Record<NameFieldKey, Map<string, number>> {
-  const counts = NAME_FIELD_DEFINITIONS.reduce(
-    (accumulator, definition) => ({
-      ...accumulator,
-      [definition.key]: new Map<string, number>(),
-    }),
-    {} as Record<NameFieldKey, Map<string, number>>,
-  );
-
-  for (const record of group?.records ?? []) {
-    for (const definition of NAME_FIELD_DEFINITIONS) {
-      const normalizedValue = normalizeLookupValue(getNameFieldValue(record, definition));
-      if (normalizedValue) {
-        counts[definition.key].set(normalizedValue, (counts[definition.key].get(normalizedValue) ?? 0) + 1);
-      }
-    }
-  }
-
-  return counts;
 }
 
 function queueSearchText(group: DuplicateGroup): string {
@@ -189,7 +123,6 @@ export function DuplicateReviewCenter() {
     }
     return [...new Set(selectedGroup.records.flatMap((record) => Object.keys(record.values)))];
   }, [selectedGroup]);
-  const nameDuplicateCounts = useMemo(() => buildNameDuplicateCounts(selectedGroup), [selectedGroup]);
 
   function handleExportXlsx() {
     downloadWorkbook({
@@ -384,25 +317,14 @@ export function DuplicateReviewCenter() {
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {selectedGroup.records.map((record) => {
                     const checked = selectedRecordIds.includes(record.id);
-                    const nameFields = NAME_FIELD_DEFINITIONS.map((definition) => {
-                      const value = getNameFieldValue(record, definition);
-                      const normalizedValue = normalizeLookupValue(value);
-                      return {
-                        ...definition,
-                        value,
-                        isDuplicate: Boolean(normalizedValue && (nameDuplicateCounts[definition.key].get(normalizedValue) ?? 0) > 1),
-                      };
-                    }).filter((field) => field.value);
-                    const hasDuplicateNameField = nameFields.some((field) => field.isDuplicate);
 
                     return (
                       <button
                         key={record.id}
                         type="button"
                         onClick={() => toggleRecordSelection(record.id)}
-                        className="rounded-xl border bg-background p-3 text-left transition hover:bg-muted/70 data-[has-duplicate-name=true]:border-amber-400 data-[has-duplicate-name=true]:bg-amber-500/10 data-[selected=true]:border-primary data-[selected=true]:bg-primary/5"
+                        className="rounded-xl border bg-background p-3 text-left transition hover:bg-muted/70 data-[selected=true]:border-primary data-[selected=true]:bg-primary/5"
                         data-selected={checked}
-                        data-has-duplicate-name={hasDuplicateNameField}
                       >
                         <span className="flex items-center gap-2 font-medium">
                           <span
@@ -416,26 +338,6 @@ export function DuplicateReviewCenter() {
                         <span className="mt-1 block truncate text-sm text-muted-foreground">
                           {Object.values(record.values).filter(Boolean).slice(0, 2).join(" ") || record.id}
                         </span>
-                        {nameFields.length > 0 && (
-                          <span className="mt-3 flex flex-wrap gap-1.5">
-                            {nameFields.map((field) => (
-                              <span
-                                key={field.key}
-                                className={
-                                  field.isDuplicate
-                                    ? "rounded-full border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
-                                    : "rounded-full border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                                }
-                                title={field.isDuplicate ? `${field.label} name matches another record` : undefined}
-                              >
-                                <span className={field.isDuplicate ? "text-amber-700" : undefined}>
-                                  {field.label}:
-                                </span>{" "}
-                                {field.value}
-                              </span>
-                            ))}
-                          </span>
-                        )}
                       </button>
                     );
                   })}

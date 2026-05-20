@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Check, Download, EyeOff, GitMerge, ShieldAlert } from "lucide-react";
+import { toast } from "sonner";
 
 import { buildAuditTrailCsv, buildCleanCsv, buildDuplicateReportCsv, downloadBlob, downloadWorkbook } from "@/services/export";
 import { mergeRecords } from "@/services/dedupe-engine/merge";
@@ -62,15 +63,21 @@ export function DuplicateReviewCenter() {
     cleanedRows,
     auditTrail,
     mergeGroup,
+    mergeGroups,
+    mergeExactGroups,
     ignoreGroup,
+    ignoreGroups,
     markUnique,
+    markGroupsUnique,
     approveAll,
   } = useDedupeStore();
   const pendingGroups = duplicateGroups.filter((group) => group.status === "pending");
+  const exactPendingGroups = pendingGroups.filter((group) => group.confidence === 100);
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(pendingGroups[0]?.id);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [queueSearch, setQueueSearch] = useState("");
   const [queueSort, setQueueSort] = useState<QueueSort>("default");
+  const [selectedQueueGroupIds, setSelectedQueueGroupIds] = useState<string[]>([]);
   const [selectedRecordIdsByGroup, setSelectedRecordIdsByGroup] = useState<Record<string, string[]>>({});
   const selectedGroup =
     duplicateGroups.find((group) => group.id === selectedGroupId) ?? pendingGroups[0] ?? duplicateGroups[0];
@@ -92,6 +99,17 @@ export function DuplicateReviewCenter() {
       return queueSort === "az" ? result : -result;
     });
   }, [duplicateGroups, queueSearch, queueSort]);
+  const visiblePendingGroupIds = useMemo(
+    () => visibleDuplicateGroups.filter((group) => group.status === "pending").map((group) => group.id),
+    [visibleDuplicateGroups],
+  );
+  const selectedPendingGroupIds = useMemo(() => {
+    const pendingGroupIds = new Set(pendingGroups.map((group) => group.id));
+    return selectedQueueGroupIds.filter((groupId) => pendingGroupIds.has(groupId));
+  }, [pendingGroups, selectedQueueGroupIds]);
+  const allVisiblePendingSelected =
+    visiblePendingGroupIds.length > 0 &&
+    visiblePendingGroupIds.every((groupId) => selectedQueueGroupIds.includes(groupId));
   const selectedRecordIds = useMemo(() => {
     if (!selectedGroup) {
       return [];
@@ -167,6 +185,56 @@ export function DuplicateReviewCenter() {
     }));
   }
 
+  function toggleQueueGroupSelection(groupId: string) {
+    const group = duplicateGroups.find((candidate) => candidate.id === groupId);
+    if (!group || group.status !== "pending") {
+      return;
+    }
+
+    setSelectedQueueGroupIds((currentSelection) =>
+      currentSelection.includes(groupId)
+        ? currentSelection.filter((selectedGroupId) => selectedGroupId !== groupId)
+        : [...currentSelection, groupId],
+    );
+  }
+
+  function selectAllVisiblePendingGroups() {
+    setSelectedQueueGroupIds((currentSelection) => [
+      ...currentSelection,
+      ...visiblePendingGroupIds.filter((groupId) => !currentSelection.includes(groupId)),
+    ]);
+  }
+
+  function clearQueueSelection() {
+    setSelectedQueueGroupIds([]);
+  }
+
+  function handleMergeAllExactGroups() {
+    mergeExactGroups();
+    setSelectedQueueGroupIds((currentSelection) =>
+      currentSelection.filter((groupId) => !exactPendingGroups.some((group) => group.id === groupId)),
+    );
+    toast.success(`Merged ${exactPendingGroups.length.toLocaleString()} 100% confidence groups`);
+  }
+
+  function handleMergeSelectedGroups() {
+    mergeGroups(selectedPendingGroupIds);
+    toast.success(`Merged ${selectedPendingGroupIds.length.toLocaleString()} selected groups`);
+    clearQueueSelection();
+  }
+
+  function handleIgnoreSelectedGroups() {
+    ignoreGroups(selectedPendingGroupIds);
+    toast.success(`Ignored ${selectedPendingGroupIds.length.toLocaleString()} selected groups`);
+    clearQueueSelection();
+  }
+
+  function handleMarkSelectedGroupsUnique() {
+    markGroupsUnique(selectedPendingGroupIds);
+    toast.success(`Marked ${selectedPendingGroupIds.length.toLocaleString()} selected groups unique`);
+    clearQueueSelection();
+  }
+
   function handleMergeSelectedGroup() {
     if (!selectedGroup || !canMergeSelection) {
       return;
@@ -202,10 +270,36 @@ export function DuplicateReviewCenter() {
         </CardHeader>
         <CardContent className="grid gap-3">
           <div className="grid grid-cols-2 gap-2">
+            <Button onClick={handleMergeAllExactGroups} disabled={exactPendingGroups.length === 0}>
+              <GitMerge className="mr-2 size-4" />
+              Merge all 100%
+            </Button>
             <Button onClick={approveAll} disabled={pendingGroups.length === 0}>
               <Check className="mr-2 size-4" />
               Approve all
             </Button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger className={buttonVariants({ variant: "outline" })}>
+                <Check className="mr-2 size-4" />
+                Batch actions
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleMergeSelectedGroups} disabled={selectedPendingGroupIds.length === 0}>
+                  Merge selected
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleIgnoreSelectedGroups} disabled={selectedPendingGroupIds.length === 0}>
+                  Ignore selected
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleMarkSelectedGroupsUnique}
+                  disabled={selectedPendingGroupIds.length === 0}
+                >
+                  Mark selected unique
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger className={buttonVariants({ variant: "outline" })}>
                 <Download className="mr-2 size-4" />
@@ -239,28 +333,82 @@ export function DuplicateReviewCenter() {
             </Select>
           </div>
 
-          <div className="max-h-[640px] space-y-2 overflow-auto pr-1">
-            {visibleDuplicateGroups.map((group) => (
-              <button
-                key={group.id}
+          <div className="rounded-2xl border bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Batch select duplicate groups</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedPendingGroupIds.length.toLocaleString()} selected •{" "}
+                  {exactPendingGroups.length.toLocaleString()} pending groups are 100%
+                </p>
+              </div>
+              <Badge variant={selectedPendingGroupIds.length > 0 ? "secondary" : "outline"}>
+                {selectedPendingGroupIds.length}
+              </Badge>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button
                 type="button"
-                onClick={() => setSelectedGroupId(group.id)}
-                className="w-full rounded-2xl border bg-background p-4 text-left transition hover:bg-muted/60 data-[selected=true]:border-primary"
-                data-selected={group.id === selectedGroup?.id}
+                variant="outline"
+                size="sm"
+                onClick={allVisiblePendingSelected ? clearQueueSelection : selectAllVisiblePendingGroups}
+                disabled={visiblePendingGroupIds.length === 0}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{groupLabel(group)}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {group.records.length} records • {group.status}
-                    </p>
+                {allVisiblePendingSelected ? "Clear selected" : "Select visible"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearQueueSelection}
+                disabled={selectedPendingGroupIds.length === 0}
+              >
+                Clear all
+              </Button>
+            </div>
+          </div>
+
+          <div className="max-h-[640px] space-y-2 overflow-auto pr-1">
+            {visibleDuplicateGroups.map((group) => {
+              const selectedForBatch = selectedQueueGroupIds.includes(group.id);
+              const canBatchSelect = group.status === "pending";
+
+              return (
+                <div
+                  key={group.id}
+                  className="rounded-2xl border bg-background p-4 transition hover:bg-muted/60 data-[selected=true]:border-primary"
+                  data-selected={group.id === selectedGroup?.id}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      aria-label={`Select ${groupLabel(group)} for batch actions`}
+                      type="checkbox"
+                      checked={selectedForBatch}
+                      disabled={!canBatchSelect}
+                      onChange={() => toggleQueueGroupSelection(group.id)}
+                      className="mt-1 size-4 accent-primary disabled:opacity-40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGroupId(group.id)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{groupLabel(group)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {group.records.length} records • {group.status}
+                          </p>
+                        </div>
+                        <Badge variant={confidenceVariant(group.classification)}>
+                          {group.confidence}%
+                        </Badge>
+                      </div>
+                    </button>
                   </div>
-                  <Badge variant={confidenceVariant(group.classification)}>
-                    {group.confidence}%
-                  </Badge>
                 </div>
-              </button>
-            ))}
+              );
+            })}
             {visibleDuplicateGroups.length === 0 && (
               <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
                 No duplicate groups match your search.

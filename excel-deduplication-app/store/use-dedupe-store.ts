@@ -31,8 +31,12 @@ interface DedupeStore {
   setDedupeResult: (result: DedupeResult) => void;
   setProgress: (progress: ProcessingProgress) => void;
   mergeGroup: (groupId: string, overrides?: Record<string, string>, selectedRecordIds?: string[]) => void;
+  mergeGroups: (groupIds: string[]) => void;
+  mergeExactGroups: () => void;
   ignoreGroup: (groupId: string) => void;
+  ignoreGroups: (groupIds: string[]) => void;
   markUnique: (groupId: string) => void;
+  markGroupsUnique: (groupIds: string[]) => void;
   approveAll: () => void;
   updateSettings: (settings: Partial<DedupeSettings>) => void;
   reset: () => void;
@@ -129,18 +133,47 @@ export const useDedupeStore = create<DedupeStore>((set, get) => ({
         auditTrail: [...state.auditTrail, audit],
       };
     }),
+  mergeGroups: (groupIds) => {
+    for (const groupId of groupIds) {
+      get().mergeGroup(groupId);
+    }
+  },
+  mergeExactGroups: () => {
+    const exactPendingGroupIds = get()
+      .duplicateGroups.filter((group) => group.status === "pending" && group.confidence === 100)
+      .map((group) => group.id);
+    get().mergeGroups(exactPendingGroupIds);
+  },
   ignoreGroup: (groupId) =>
     set((state) => ({
       duplicateGroups: state.duplicateGroups.map((group) =>
         group.id === groupId ? { ...group, status: "ignored" as const } : group,
       ),
     })),
+  ignoreGroups: (groupIds) =>
+    set((state) => {
+      const groupIdSet = new Set(groupIds);
+      return {
+        duplicateGroups: state.duplicateGroups.map((group) =>
+          groupIdSet.has(group.id) ? { ...group, status: "ignored" as const } : group,
+        ),
+      };
+    }),
   markUnique: (groupId) =>
     set((state) => ({
       duplicateGroups: state.duplicateGroups.map((group) =>
         group.id === groupId ? { ...group, status: "unique" as const } : group,
       ),
     })),
+  markGroupsUnique: (groupIds) =>
+    set((state) => {
+      const groupIdSet = new Set(groupIds);
+      return {
+        duplicateGroups: state.duplicateGroups.map((group) =>
+          groupIdSet.has(group.id) ? { ...group, status: "unique" as const } : group,
+        ),
+      };
+    }),
   approveAll: () => {
     const pending = get().duplicateGroups.filter((group) => group.status === "pending");
     for (const group of pending) {

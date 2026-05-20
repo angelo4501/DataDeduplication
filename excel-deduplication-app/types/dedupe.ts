@@ -53,9 +53,39 @@ export interface DedupeThresholds {
   possible: number;
 }
 
+export type DedupeAlgorithmPreset =
+  | "enterprise_conservative"
+  | "balanced"
+  | "high_recall"
+  | "custom";
+
+export interface DedupeAlgorithmSettings {
+  preset: DedupeAlgorithmPreset;
+  namePrefixLength: number;
+  exactPrefixLength: number;
+  enablePhoneticBlocking: boolean;
+  enableAddressTokenBlocking: boolean;
+  enableCrossBlockFallback: boolean;
+  fallbackModulo: number;
+  missingValuePenalty: number;
+  disagreementPenalty: number;
+  strongMatchBoost: number;
+  strongMatchThreshold: number;
+  lowSimilarityThreshold: number;
+  requiredFieldMinScore: number;
+  mandatoryFieldMismatchCap: number;
+  requireMandatoryFieldsForExact: boolean;
+  minimumExactFields: number;
+  minimumHighConfidenceFields: number;
+  minimumCandidateReasons: number;
+  maxCandidatePairsPerRecord: number;
+  enableTransitiveClustering: boolean;
+}
+
 export interface DedupeSettings {
   fields: FieldWeight[];
   thresholds: DedupeThresholds;
+  algorithm: DedupeAlgorithmSettings;
   blockFields: string[];
   maxBlockSize: number;
   chunkSize: number;
@@ -187,7 +217,64 @@ export const DEFAULT_DEDUPE_SETTINGS: DedupeSettings = {
     high: 85,
     possible: 70,
   },
+  algorithm: {
+    preset: "enterprise_conservative",
+    namePrefixLength: 6,
+    exactPrefixLength: 12,
+    enablePhoneticBlocking: true,
+    enableAddressTokenBlocking: true,
+    enableCrossBlockFallback: true,
+    fallbackModulo: 97,
+    missingValuePenalty: 18,
+    disagreementPenalty: 12,
+    strongMatchBoost: 3,
+    strongMatchThreshold: 92,
+    lowSimilarityThreshold: 35,
+    requiredFieldMinScore: 82,
+    mandatoryFieldMismatchCap: 69,
+    requireMandatoryFieldsForExact: true,
+    minimumExactFields: 3,
+    minimumHighConfidenceFields: 2,
+    minimumCandidateReasons: 2,
+    maxCandidatePairsPerRecord: 2500,
+    enableTransitiveClustering: true,
+  },
   blockFields: ["lastName", "birthdate"],
   maxBlockSize: 600,
   chunkSize: 1000,
+};
+
+export const DEDUPE_ALGORITHM_PRESETS: Record<
+  Exclude<DedupeAlgorithmPreset, "custom">,
+  DedupeAlgorithmSettings
+> = {
+  enterprise_conservative: DEFAULT_DEDUPE_SETTINGS.algorithm,
+  balanced: {
+    ...DEFAULT_DEDUPE_SETTINGS.algorithm,
+    preset: "balanced",
+    missingValuePenalty: 12,
+    disagreementPenalty: 8,
+    strongMatchBoost: 4,
+    requiredFieldMinScore: 76,
+    mandatoryFieldMismatchCap: 74,
+    minimumExactFields: 3,
+    minimumHighConfidenceFields: 2,
+    maxCandidatePairsPerRecord: 3500,
+  },
+  high_recall: {
+    ...DEFAULT_DEDUPE_SETTINGS.algorithm,
+    preset: "high_recall",
+    namePrefixLength: 4,
+    exactPrefixLength: 8,
+    missingValuePenalty: 8,
+    disagreementPenalty: 5,
+    strongMatchBoost: 5,
+    strongMatchThreshold: 88,
+    requiredFieldMinScore: 70,
+    mandatoryFieldMismatchCap: 79,
+    minimumExactFields: 2,
+    minimumHighConfidenceFields: 1,
+    minimumCandidateReasons: 1,
+    maxCandidatePairsPerRecord: 5000,
+  },
 };

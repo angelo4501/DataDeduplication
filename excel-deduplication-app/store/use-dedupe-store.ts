@@ -156,6 +156,10 @@ export const useDedupeStore = create<DedupeStore>((set, get) => ({
           ...state.settings.thresholds,
           ...settings.thresholds,
         },
+        algorithm: {
+          ...state.settings.algorithm,
+          ...settings.algorithm,
+        },
         fields: settings.fields ?? state.settings.fields,
       },
     })),

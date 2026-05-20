@@ -64,6 +64,26 @@ describe("dedupe engine", () => {
     expect(result.groups[0].recordIds).not.toContain("row-3");
   });
 
+  it("caps confidence when required identity fields disagree", () => {
+    const left = row("row-1", {
+      "Last Name": "Garcia",
+      "First Name": "Maria",
+      Birthdate: "1988-05-10",
+      Address: "10 Mabini Street",
+    });
+    const right = row("row-2", {
+      "Last Name": "Reyes",
+      "First Name": "Maria",
+      Birthdate: "1988-05-10",
+      Address: "10 Mabini Street",
+    });
+
+    const result = calculateWeightedScore(left, right);
+
+    expect(result.score).toBeLessThan(70);
+    expect(result.reasons.find((reason) => reason.field === "lastName")?.score).toBeLessThan(85);
+  });
+
   it("merges only selected records from larger duplicate groups", () => {
     const records = [
       row("row-1", {

@@ -58,6 +58,10 @@ function mergeSettings(settings?: Partial<DedupeSettings>): DedupeSettings {
       ...DEFAULT_DEDUPE_SETTINGS.thresholds,
       ...settings?.thresholds,
     },
+    algorithm: {
+      ...DEFAULT_DEDUPE_SETTINGS.algorithm,
+      ...settings?.algorithm,
+    },
   };
 }
 
@@ -79,12 +83,32 @@ export function resolveFieldValue(row: ParsedRow, field: FieldWeight): string {
   return "";
 }
 
-function classifyScore(score: number, settings: DedupeSettings): DuplicateClassification {
+function classifyScore(
+  score: number,
+  reasons: MatchReason[],
+  settings: DedupeSettings,
+): DuplicateClassification {
+  const strongReasons = reasons.filter(
+    (reason) => reason.score >= settings.algorithm.strongMatchThreshold,
+  ).length;
+  const exactReasons = reasons.filter((reason) => reason.score >= 99).length;
+
   if (score >= settings.thresholds.exact) {
-    return "exact";
+    if (
+      exactReasons >= settings.algorithm.minimumExactFields &&
+      (!settings.algorithm.requireMandatoryFieldsForExact ||
+        requiredFieldsPass(reasons, settings))
+    ) {
+      return "exact";
+    }
+    return strongReasons >= settings.algorithm.minimumHighConfidenceFields
+      ? "highly_probable"
+      : "possible";
   }
   if (score >= settings.thresholds.high) {
-    return "highly_probable";
+    return strongReasons >= settings.algorithm.minimumHighConfidenceFields
+      ? "highly_probable"
+      : "possible";
   }
   if (score >= settings.thresholds.possible) {
     return "possible";
@@ -116,6 +140,48 @@ function fieldSimilarity(field: FieldWeight, left: string, right: string) {
   return calculateSimilarity(left, right);
 }
 
+function requiredFieldsPass(reasons: MatchReason[], settings: DedupeSettings): boolean {
+  const requiredFields = new Set(
+    settings.fields.filter((field) => field.required).map((field) => field.field),
+  );
+  if (requiredFields.size === 0) {
+    return true;
+  }
+
+  return reasons
+    .filter((reason) => requiredFields.has(reason.field))
+    .every((reason) => reason.score >= settings.algorithm.requiredFieldMinScore);
+}
+
+function calibratedScore(rawScore: number, reasons: MatchReason[], settings: DedupeSettings): number {
+  const strongReasons = reasons.filter(
+    (reason) => reason.score >= settings.algorithm.strongMatchThreshold,
+  ).length;
+  const lowSimilarityReasons = reasons.filter(
+    (reason) => reason.score > 0 && reason.score <= settings.algorithm.lowSimilarityThreshold,
+  ).length;
+  const requiredMismatch = !requiredFieldsPass(reasons, settings);
+  const missingPenalties = reasons.filter((reason) => reason.strategy === "missing-value").length;
+
+  let score = rawScore;
+  score += Math.min(
+    settings.algorithm.strongMatchBoost * strongReasons,
+    settings.algorithm.strongMatchBoost * 4,
+  );
+  score -= lowSimilarityReasons * settings.algorithm.disagreementPenalty;
+  score -= missingPenalties * settings.algorithm.missingValuePenalty;
+
+  if (requiredMismatch) {
+    score = Math.min(score, settings.algorithm.mandatoryFieldMismatchCap);
+  }
+
+  if (reasons.length < settings.algorithm.minimumCandidateReasons) {
+    score = Math.min(score, settings.thresholds.possible - 1);
+  }
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 export function calculateWeightedScore(
   left: ParsedRow,
   right: ParsedRow,
@@ -137,7 +203,10 @@ export function calculateWeightedScore(
 
     denominator += field.weight;
 
-    const similarity = !normalizedLeft || !normalizedRight ? { score: 0, strategy: "missing-value" } : fieldSimilarity(field, leftValue, rightValue);
+    const similarity =
+      !normalizedLeft || !normalizedRight
+        ? { score: 0, strategy: "missing-value" }
+        : fieldSimilarity(field, leftValue, rightValue);
     const contribution = similarity.score * field.weight;
     weightedScore += contribution;
 
@@ -153,10 +222,34 @@ export function calculateWeightedScore(
     });
   }
 
+  const rawScore = denominator === 0 ? 0 : Math.round(weightedScore / denominator);
+
   return {
-    score: denominator === 0 ? 0 : Math.round(weightedScore / denominator),
+    score: calibratedScore(rawScore, reasons, settings),
     reasons,
   };
+}
+
+function phoneticToken(value: string): string {
+  const normalized = normalizeString(value).replace(/[^a-z]/g, "");
+  if (!normalized) {
+    return "";
+  }
+
+  const first = normalized[0];
+  const encoded = normalized
+    .slice(1)
+    .replace(/[bfpv]/g, "1")
+    .replace(/[cgjkqsxz]/g, "2")
+    .replace(/[dt]/g, "3")
+    .replace(/[l]/g, "4")
+    .replace(/[mn]/g, "5")
+    .replace(/[r]/g, "6")
+    .replace(/[aeiouhwy]/g, "0")
+    .replace(/(\d)\1+/g, "$1")
+    .replace(/0/g, "");
+
+  return `${first}${encoded}`.padEnd(4, "0").slice(0, 4);
 }
 
 function buildBlockingKeys(row: ParsedRow, settings: DedupeSettings): string[] {
@@ -171,20 +264,53 @@ function buildBlockingKeys(row: ParsedRow, settings: DedupeSettings): string[] {
 
     const normalized = normalizeByKind(resolveFieldValue(row, field), field.kind);
     if (normalized) {
-      keys.add(`${blockField}:${normalized.slice(0, field.kind === "name" ? 6 : 12)}`);
+      const prefixLength =
+        field.kind === "name"
+          ? settings.algorithm.namePrefixLength
+          : settings.algorithm.exactPrefixLength;
+      keys.add(`${blockField}:${normalized.slice(0, prefixLength)}`);
+
+      if (settings.algorithm.enablePhoneticBlocking && field.kind === "name") {
+        const phonetic = phoneticToken(normalized);
+        if (phonetic) {
+          keys.add(`${blockField}:phonetic:${phonetic}`);
+        }
+      }
     }
   }
 
   const nameFields = settings.fields.filter((field) => field.kind === "name");
   const compositeName = nameFields
-    .map((field) => normalizeByKind(resolveFieldValue(row, field), field.kind).slice(0, 4))
+    .map((field) =>
+      normalizeByKind(resolveFieldValue(row, field), field.kind).slice(
+        0,
+        Math.max(2, settings.algorithm.namePrefixLength - 2),
+      ),
+    )
     .filter(Boolean)
     .join("|");
   if (compositeName) {
     keys.add(`name:${compositeName}`);
   }
 
-  return keys.size > 0 ? [...keys] : [`fallback:${row.rowNumber % 97}`];
+  if (settings.algorithm.enableAddressTokenBlocking) {
+    const addressField = settings.fields.find((field) => field.kind === "address");
+    const address = addressField
+      ? normalizeByKind(resolveFieldValue(row, addressField), addressField.kind)
+      : "";
+    const addressToken = address
+      .split(" ")
+      .find((token) => token.length >= 4 && !/^\d+$/.test(token));
+    if (addressToken) {
+      keys.add(`address:${addressToken.slice(0, settings.algorithm.exactPrefixLength)}`);
+    }
+  }
+
+  if (settings.algorithm.enableCrossBlockFallback && keys.size < 2) {
+    keys.add(`fallback:${row.rowNumber % settings.algorithm.fallbackModulo}`);
+  }
+
+  return keys.size > 0 ? [...keys] : [`fallback:${row.rowNumber % settings.algorithm.fallbackModulo}`];
 }
 
 function buildBlocks(rows: ParsedRow[], settings: DedupeSettings): Map<string, ParsedRow[]> {
@@ -227,12 +353,19 @@ function buildAnalytics(
 export function groupDuplicates(
   rows: ParsedRow[],
   candidates: DuplicateCandidate[],
+  settings: DedupeSettings = DEFAULT_DEDUPE_SETTINGS,
 ): DuplicateGroup[] {
   const rowById = new Map(rows.map((row) => [row.id, row]));
   const unionFind = new UnionFind(rows.map((row) => row.id));
 
   for (const candidate of candidates) {
-    unionFind.union(candidate.sourceId, candidate.targetId);
+    if (
+      settings.algorithm.enableTransitiveClustering ||
+      candidate.classification === "exact" ||
+      candidate.classification === "highly_probable"
+    ) {
+      unionFind.union(candidate.sourceId, candidate.targetId);
+    }
   }
 
   const groupedIds = new Map<string, Set<string>>();
@@ -278,6 +411,7 @@ export async function findDuplicates(
   const startedAt = performance.now();
   const settings = mergeSettings(partialSettings);
   const seenPairs = new Set<string>();
+  const pairCounts = new Map<string, number>();
   const candidates: DuplicateCandidate[] = [];
   const blocks = buildBlocks(rows, settings);
   let processed = 0;
@@ -306,9 +440,20 @@ export async function findDuplicates(
           continue;
         }
 
+        const leftCount = pairCounts.get(left.id) ?? 0;
+        const rightCount = pairCounts.get(right.id) ?? 0;
+        if (
+          leftCount >= settings.algorithm.maxCandidatePairsPerRecord ||
+          rightCount >= settings.algorithm.maxCandidatePairsPerRecord
+        ) {
+          continue;
+        }
+
         seenPairs.add(id);
+        pairCounts.set(left.id, leftCount + 1);
+        pairCounts.set(right.id, rightCount + 1);
         const { score, reasons } = calculateWeightedScore(left, right, settings);
-        const classification = classifyScore(score, settings);
+        const classification = classifyScore(score, reasons, settings);
 
         if (classification !== "unique") {
           candidates.push({
@@ -342,7 +487,7 @@ export async function findDuplicates(
     message: "Clustering duplicate records",
   });
 
-  const groups = clusterRecords(rows, candidates);
+  const groups = groupDuplicates(rows, candidates, settings);
   const processingTimeMs = Math.round(performance.now() - startedAt);
   const analytics = buildAnalytics(rows.length, groups, processingTimeMs);
 

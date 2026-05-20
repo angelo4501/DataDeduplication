@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Download, EyeOff, GitMerge, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -71,8 +71,14 @@ export function DuplicateReviewCenter() {
     markGroupsUnique,
     approveAll,
   } = useDedupeStore();
-  const pendingGroups = duplicateGroups.filter((group) => group.status === "pending");
-  const exactPendingGroups = pendingGroups.filter((group) => group.confidence === 100);
+  const pendingGroups = useMemo(
+    () => duplicateGroups.filter((group) => group.status === "pending"),
+    [duplicateGroups],
+  );
+  const exactPendingGroups = useMemo(
+    () => pendingGroups.filter((group) => group.confidence === 100),
+    [pendingGroups],
+  );
   const [selectedGroupId, setSelectedGroupId] = useState<string | undefined>(pendingGroups[0]?.id);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [queueSearch, setQueueSearch] = useState("");
@@ -80,12 +86,12 @@ export function DuplicateReviewCenter() {
   const [selectedQueueGroupIds, setSelectedQueueGroupIds] = useState<string[]>([]);
   const [selectedRecordIdsByGroup, setSelectedRecordIdsByGroup] = useState<Record<string, string[]>>({});
   const selectedGroup =
-    duplicateGroups.find((group) => group.id === selectedGroupId) ?? pendingGroups[0] ?? duplicateGroups[0];
+    pendingGroups.find((group) => group.id === selectedGroupId) ?? pendingGroups[0];
   const visibleDuplicateGroups = useMemo(() => {
     const normalizedSearch = normalizeLookupValue(queueSearch);
     const filteredGroups = normalizedSearch
-      ? duplicateGroups.filter((group) => queueSearchText(group).includes(normalizedSearch))
-      : duplicateGroups;
+      ? pendingGroups.filter((group) => queueSearchText(group).includes(normalizedSearch))
+      : pendingGroups;
 
     if (queueSort === "default") {
       return filteredGroups;
@@ -98,7 +104,7 @@ export function DuplicateReviewCenter() {
       });
       return queueSort === "az" ? result : -result;
     });
-  }, [duplicateGroups, queueSearch, queueSort]);
+  }, [pendingGroups, queueSearch, queueSort]);
   const visiblePendingGroupIds = useMemo(
     () => visibleDuplicateGroups.filter((group) => group.status === "pending").map((group) => group.id),
     [visibleDuplicateGroups],
@@ -141,6 +147,21 @@ export function DuplicateReviewCenter() {
     }
     return [...new Set(selectedGroup.records.flatMap((record) => Object.keys(record.values)))];
   }, [selectedGroup]);
+
+  useEffect(() => {
+    if (!selectedGroupId || pendingGroups.some((group) => group.id === selectedGroupId)) {
+      return;
+    }
+
+    setSelectedGroupId(pendingGroups[0]?.id);
+  }, [pendingGroups, selectedGroupId]);
+
+  useEffect(() => {
+    const pendingGroupIds = new Set(pendingGroups.map((group) => group.id));
+    setSelectedQueueGroupIds((currentSelection) =>
+      currentSelection.filter((groupId) => pendingGroupIds.has(groupId)),
+    );
+  }, [pendingGroups]);
 
   function handleExportXlsx() {
     downloadWorkbook({
@@ -411,7 +432,9 @@ export function DuplicateReviewCenter() {
             })}
             {visibleDuplicateGroups.length === 0 && (
               <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                No duplicate groups match your search.
+                {pendingGroups.length === 0
+                  ? "All duplicate groups have been reviewed. Merged 100% groups are hidden from this queue."
+                  : "No pending duplicate groups match your search."}
               </p>
             )}
           </div>

@@ -117,7 +117,7 @@ export function SettingsPanel() {
       blockFields,
       algorithm,
     });
-    toast.success("Enterprise algorithm settings saved");
+    toast.success("algorithm settings saved");
   }
 
   return (
@@ -128,14 +128,14 @@ export function SettingsPanel() {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <BrainCircuit className="size-5" />
-                Enterprise deduplication algorithm
+                Drmd deduplication algorithm
               </CardTitle>
               <CardDescription>
                 Tune the high-accuracy matching pipeline used for CRM exports, voter lists, employee
-                records, and customer databases.
+                records, and Benefiaciary databases.
               </CardDescription>
             </div>
-            <Badge variant="secondary">AI-ready rules engine</Badge>
+            <Badge variant="secondary">Drmd rules engine</Badge>
           </div>
         </CardHeader>
         <CardContent className="grid gap-6">

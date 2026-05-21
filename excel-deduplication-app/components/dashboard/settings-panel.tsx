@@ -26,7 +26,7 @@ function formatFields(fields: ReturnType<typeof useDedupeStore.getState>["settin
 const FIELD_KINDS: MatchFieldKind[] = ["name", "string", "phone", "date", "address", "exact"];
 
 const PRESET_LABELS: Record<Exclude<DedupeAlgorithmPreset, "custom">, string> = {
-  conservative: "Conservative",
+  enterprise_conservative: " Conservative",
   balanced: "Balanced Precision",
   high_recall: "High Recall Investigation",
 };
